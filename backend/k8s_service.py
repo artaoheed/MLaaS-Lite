@@ -80,3 +80,50 @@ def create_limit_range(namespace: str):
     )
     v1.create_namespaced_limit_range(namespace=namespace, body=limit_range)
     print(f"   └── Applied LimitRange to {namespace}")
+
+
+def create_gcp_secret(namespace: str):
+    """
+    Injects GCP Service Account credentials so User code can access GCS buckets.
+    """
+    # 1. Fetch the Master Service Account Key from the Backend's Environment
+    # This ensures we don't hardcode sensitive keys in the source code.
+    sa_json_content = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
+    bucket_name = os.getenv("GCP_BUCKET_NAME", "my-ml-platform-bucket")
+
+    if not sa_json_content:
+        print(f"⚠️ WARNING: GCP_SERVICE_ACCOUNT_JSON env var is missing. Secret injection skipped for {namespace}.")
+        return
+
+    # 2. Prepare the Secret Data
+    # We store the JSON file content and the path where it will be mounted
+    data = {
+        # The actual content of the JSON key file
+        "service-account.json": base64.b64encode(sa_json_content.encode('utf-8')).decode('utf-8'),
+        
+        # Standard Env Var that Google Client Libraries look for automatically
+        "GOOGLE_APPLICATION_CREDENTIALS": base64.b64encode(b"/var/secrets/google/service-account.json").decode('utf-8'),
+        
+        # The bucket name for the user to use
+        "GCS_BUCKET_NAME": base64.b64encode(bucket_name.encode('utf-8')).decode('utf-8')
+    }
+
+    # 3. Create the Secret Object
+    secret = client.V1Secret(
+        metadata=client.V1ObjectMeta(
+            name="gcp-sa-creds",  # Renamed from ml-s3-creds to be explicit
+            labels={"type": "cloud-credentials"}
+        ),
+        type="Opaque",
+        data=data
+    )
+
+    # 4. Apply to Kubernetes
+    try:
+        v1.create_namespaced_secret(namespace=namespace, body=secret)
+        print(f"   └── Injected GCP Secrets (gcp-sa-creds) into {namespace}")
+    except client.exceptions.ApiException as e:
+        if e.status == 409:
+            print(f"   └── Secret already exists in {namespace}")
+        else:
+            raise e
