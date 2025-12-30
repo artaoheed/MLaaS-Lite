@@ -3,21 +3,21 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import models, database, k8s_service
 
-# app = FastAPI(title="MLaaS Platform API", version="0.1.0")
+app = FastAPI(title="MLaaS Platform API", version="0.1.0")
 
-# @app.get("/")
-# def read_root():
-#     return {"status": "active", "service": "mlaas-backend"}
+@app.get("/")
+def read_root():
+    return {"status": "active", "service": "mlaas-backend"}
 
-# @app.get("/health")
-# def health_check():
-#     return {"status": "ok"}
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
 
 
 # Create tables (shortcut for dev, use alembic in prod)
 models.Base.metadata.create_all(bind=database.engine)
 
-app = FastAPI()
+#app = FastAPI()
 
 class TeamCreate(BaseModel):
     team_name: str

@@ -1,3 +1,19 @@
+# manifests/infra/postgres.yaml
+
+# 1. PVC (Storage Request)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+# 2. Secret (Credentials)
 apiVersion: v1
 kind: Secret
 metadata:
@@ -10,6 +26,7 @@ stringData:
   POSTGRES_PASSWORD: "platform_password"
   POSTGRES_DB: "mlaas_db"
 ---
+# 3. Deployment (The DB itself)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -38,8 +55,10 @@ spec:
           name: pgdata
       volumes:
       - name: pgdata
-        emptyDir: {} # Ephemeral storage for Dev. Use PersistentVolumeClaim for Prod.
+        persistentVolumeClaim:  # <--- FIXED: Must be lowercase 'p'
+          claimName: postgres-pvc
 ---
+# 4. Service (Networking)
 apiVersion: v1
 kind: Service
 metadata:
