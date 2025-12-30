@@ -5,52 +5,48 @@ metadata:
   namespace: default
 type: Opaque
 stringData:
-  # In production, remember to use External Secrets. For development, this is fine.
+  # In production, use External Secrets. For dev, this is fine.
   POSTGRES_USER: "platform_admin"
   POSTGRES_PASSWORD: "platform_password"
   POSTGRES_DB: "mlaas_db"
-
 ---
-
 apiVersion: apps/v1
 kind: Deployment
-metadata: 
-  name: postgres 
+metadata:
+  name: postgres
   namespace: default
-spec: 
+spec:
   selector:
     matchLabels:
       app: postgres
-    replicas: 1
-    template:
-      metadata:
-        labels:
-          app: postgres
-      spec:
-        containers:
-        - name: postgres
-          image: postgres:15-alpine
-          ports:
-          - containerPort: 5432
-          envFrom:
-          - secretRef:
-              name: db-credentials
-          volumeMounts:
-          - mountPath: /var/lib/postgresql/data
-            name: pgdata
-        volumes:
-        - name: pgdata
-          emptyDir: {} # Ephemeral storage for Development. Use PersistentVolumeClaim in production.
-
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        envFrom:
+        - secretRef:
+            name: db-credentials
+        volumeMounts:
+        - mountPath: /var/lib/postgresql/data
+          name: pgdata
+      volumes:
+      - name: pgdata
+        emptyDir: {} # Ephemeral storage for Dev. Use PersistentVolumeClaim for Prod.
 ---
-
 apiVersion: v1
 kind: Service
-metadata: 
+metadata:
   name: postgres
   namespace: default
 spec:
   ports:
-    - port: 5432
+  - port: 5432
   selector:
     app: postgres
