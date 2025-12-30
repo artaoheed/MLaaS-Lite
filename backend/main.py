@@ -35,6 +35,12 @@ def register_team(team_data: TeamCreate, db: Session = Depends(database.get_db))
     # This calls Kubernetes API
     try:
         k8s_ns = k8s_service.create_team_namespace(team_data.team_name)
+
+        # B. Apply Governance & Secrets
+        k8s_service.create_resource_quota(k8s_ns)
+        k8s_service.create_limit_range(k8s_ns)
+        #k8s_service.create_gcp_secret(k8s_ns)
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to provision namespace: {str(e)}")
 
