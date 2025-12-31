@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: job-{{ safe_job_name }}-
+  namespace: {{ namespace }}
+  labels:
+    job_id: "{{ job_id }}"
+    team: "{{ team_name }}"
+spec:
+  entrypoint: train
+  # This uses the ServiceAccount we provisioned for the team (optional, uses default if missing)
+  serviceAccountName: default 
+  templates:
+  - name: train
+    container:
+      image: ml-base:v1
+      imagePullPolicy: Never
+      command: ["python", "-c"]
+      # We use a JSON filter to safely escape quotes/newlines in user code
+      args: [{{ python_code | tojson }}]
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "512Mi"
+    
+    # Save the output model automatically
+    outputs:
+      artifacts:
+      - name: model
+        path: /outputs/model.pkl
+        s3:
+          # We use the credentials we injected on Day 6 (or Global Defaults)
+          key: "{{ team_name }}/{{ job_id }}/model.pkl"

@@ -1,6 +1,10 @@
 from kubernetes import client, config
+from jinja2 import Environment, FileSystemLoader
+import json
+import yaml
 import base64
 import os
+
 
 # Load kubeconfig. 
 # If running locally, uses ~/.kube/config. 
@@ -127,3 +131,67 @@ def create_gcp_secret(namespace: str):
             print(f"   └── Secret already exists in {namespace}")
         else:
             raise e
+
+# Setup Jinja2
+template_env = Environment(loader=FileSystemLoader("templates"))
+
+def submit_workflow(team_name: str, job_id: int, python_code: str):
+    """
+    Generates a Workflow YAML and submits it to Argo.
+    """
+    namespace = f"team-{team_name}"
+    
+    # 1. Render Template
+    template = template_env.get_template("training-job.yaml.j2")
+    manifest_str = template.render(
+        safe_job_name=team_name, # Simple sanitization
+        namespace=namespace,
+        job_id=str(job_id),
+        team_name=team_name,
+        python_code=python_code
+    )
+    
+    # 2. Convert YAML string to Python Dict
+    import yaml
+    manifest = yaml.safe_load(manifest_str)
+    
+    # 3. Submit to K8s (Custom Objects API)
+    # Group: argoproj.io, Version: v1alpha1, Plural: workflows
+    api = client.CustomObjectsApi()
+    try:
+        response = api.create_namespaced_custom_object(
+            group="argoproj.io",
+            version="v1alpha1",
+            namespace=namespace,
+            plural="workflows",
+            body=manifest
+        )
+        print(f"✅ Submitted Workflow: {response['metadata']['name']}")
+        return response['metadata']['name']
+    except client.exceptions.ApiException as e:
+        print(f"❌ Failed to submit workflow: {e}")
+        raise e
+
+def get_job_logs(workflow_name: str, namespace: str):
+    """
+    Finds the main pod for the workflow and reads its logs.
+    """
+    try:
+        # 1. List pods in the namespace labeled with this workflow
+        # Argo labels pods with 'workflows.argoproj.io/workflow={workflow_name}'
+        label_selector = f"workflows.argoproj.io/workflow={workflow_name}"
+        pods = v1.list_namespaced_pod(namespace, label_selector=label_selector)
+
+        if not pods.items:
+            return "⏳ Job is starting... No pods found yet."
+
+        # 2. Get the main pod (usually the last one created or the one named 'train')
+        # For our simple template, there's usually just one pod doing the work.
+        pod_name = pods.items[0].metadata.name
+        
+        # 3. Read logs
+        return v1.read_namespaced_pod_log(name=pod_name, namespace=namespace)
+        
+    except client.exceptions.ApiException as e:
+        return f"⚠️ Could not fetch logs: {e}"
+

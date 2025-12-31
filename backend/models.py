@@ -25,3 +25,25 @@ class Team(Base):
 
     # Relationship to users
     users = relationship("User", back_populates="team")
+
+class Job(Base):
+    __tablename__ = "jobs"
+    id = Column(Integer, primary_key=True, index=True)
+    team_id = Column(Integer, ForeignKey("teams.id"))
+    status = Column(String, default="PENDING")
+    argo_workflow_name = Column(String, nullable=True)
+    
+    team = relationship("Team")
+
+class Model(Base):
+    __tablename__ = "models"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)          # e.g. "omega-model-v1"
+    s3_path = Column(String)       # e.g. "omega/1/model.pkl"
+    job_id = Column(Integer, ForeignKey("jobs.id"))
+    team_id = Column(Integer, ForeignKey("teams.id"))
+    created_at = Column(String)    # Simple timestamp string for now
+    
+    # Relationships
+    job = relationship("Job")
+    team = relationship("Team")
