@@ -1,0 +1,33 @@
+# 1. Secret with MinIO Credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-minio-cred
+  namespace: argo
+type: Opaque
+stringData:
+  accessKey: minioadmin
+  secretKey: minioadmin
+---
+# 2. ConfigMap linking Argo to MinIO
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: artifact-repositories
+  namespace: argo
+  annotations:
+    workflows.argoproj.io/default-artifact-repository: default-v1
+data:
+  default-v1: |
+    archiveLogs: true
+    s3:
+      # This is the internal DNS name of the MinIO service
+      endpoint: minio.ml-storage.svc.cluster.local:9000
+      bucket: ml-models
+      insecure: true
+      accessKeySecret:
+        name: my-minio-cred
+        key: accessKey
+      secretKeySecret:
+        name: my-minio-cred
+        key: secretKey
