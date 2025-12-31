@@ -1,23 +1,17 @@
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-import models, database, k8s_service
+import models
+import database
+import tasks # <--- Import the tasks
+
+# Initialize DB
+try:
+    models.Base.metadata.create_all(bind=database.engine)
+except:
+    print("⚠️ DB Connection failed on startup. Is the tunnel running?")
 
 app = FastAPI(title="MLaaS Platform API", version="0.1.0")
-
-@app.get("/")
-def read_root():
-    return {"status": "active", "service": "mlaas-backend"}
-
-@app.get("/health")
-def health_check():
-    return {"status": "ok"}
-
-
-# Create tables (shortcut for dev, use alembic in prod)
-models.Base.metadata.create_all(bind=database.engine)
-
-#app = FastAPI()
 
 class TeamCreate(BaseModel):
     team_name: str
@@ -26,36 +20,33 @@ class TeamCreate(BaseModel):
 
 @app.post("/register")
 def register_team(team_data: TeamCreate, db: Session = Depends(database.get_db)):
-    # 1. Check if team exists
-    existing_team = db.query(models.Team).filter(models.Team.name == team_data.team_name).first()
-    if existing_team:
+    # 1. Check existing
+    existing = db.query(models.Team).filter(models.Team.name == team_data.team_name).first()
+    if existing:
         raise HTTPException(status_code=400, detail="Team already exists")
 
-    # 2. PROVISION INFRASTRUCTURE (The Magic)
-    # This calls Kubernetes API
-    try:
-        k8s_ns = k8s_service.create_team_namespace(team_data.team_name)
-
-        # B. Apply Governance & Secrets
-        k8s_service.create_resource_quota(k8s_ns)
-        k8s_service.create_limit_range(k8s_ns)
-        #k8s_service.create_gcp_secret(k8s_ns)
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to provision namespace: {str(e)}")
-
-    # 3. Save to DB
-    new_team = models.Team(name=team_data.team_name, k8s_namespace=k8s_ns)
+    # 2. Save to DB (Status: PENDING)
+    standard_ns = f"team-{team_data.team_name}"
+    
+    new_team = models.Team(name=team_data.team_name, k8s_namespace=standard_ns)
     db.add(new_team)
     db.commit()
     db.refresh(new_team)
 
     new_user = models.User(
         email=team_data.admin_email, 
-        hashed_password=team_data.password, # Hash this in real life!
+        hashed_password=team_data.password, 
         team_id=new_team.id
     )
     db.add(new_user)
     db.commit()
 
-    return {"status": "created", "team": new_team.name, "namespace": k8s_ns}
+    # 3. Trigger Async Task
+    # .delay() returns immediately. It does NOT wait for the function to finish.
+    tasks.provision_team.delay(team_data.team_name, new_team.id)
+
+    return {
+        "status": "accepted", 
+        "message": "Provisioning started in background", 
+        "namespace": standard_ns
+    }
