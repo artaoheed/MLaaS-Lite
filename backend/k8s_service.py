@@ -195,3 +195,80 @@ def get_job_logs(workflow_name: str, namespace: str):
     except client.exceptions.ApiException as e:
         return f"⚠️ Could not fetch logs: {e}"
 
+def create_deployment(team_name: str, model_id: int, s3_key: str):
+    """
+    Creates a Deployment (GCP Version) for the model.
+    """
+    namespace = f"team-{team_name}"
+    app_name = f"model-{model_id}"
+    
+    # 1. Define Deployment
+    deployment = client.V1Deployment(
+        metadata=client.V1ObjectMeta(name=app_name, labels={"app": app_name}),
+        spec=client.V1DeploymentSpec(
+            replicas=1,
+            selector=client.V1LabelSelector(match_labels={"app": app_name}),
+            template=client.V1PodTemplateSpec(
+                metadata=client.V1ObjectMeta(labels={"app": app_name}),
+                spec=client.V1PodSpec(
+                    containers=[
+                        client.V1Container(
+                            name="serving-container",
+                            image="ml-serving:v1",
+                            image_pull_policy="Never",
+                            ports=[client.V1ContainerPort(container_port=80)],
+                            env=[
+                                # Tell the app which file to download
+                                client.V1EnvVar(name="MODEL_S3_KEY", value=s3_key),
+                                
+                                # 1. Point Google Library to the mounted key
+                                client.V1EnvVar(name="GOOGLE_APPLICATION_CREDENTIALS", value="/var/secrets/google/service-account.json"),
+                                
+                                # 2. Get Bucket Name from the Secret (or hardcode if you prefer)
+                                client.V1EnvVar(name="GCP_BUCKET_NAME", value_from=client.V1EnvVarSource(secret_key_ref=client.V1SecretKeySelector(name="gcp-sa-creds", key="GCS_BUCKET_NAME")))
+                            ],
+                            # 3. MOUNT THE SECRET AS A FILE
+                            volume_mounts=[
+                                client.V1VolumeMount(
+                                    name="gcp-creds",
+                                    mount_path="/var/secrets/google",
+                                    read_only=True
+                                )
+                            ]
+                        )
+                    ],
+                    # 4. DEFINE THE VOLUME
+                    volumes=[
+                        client.V1Volume(
+                            name="gcp-creds",
+                            secret=client.V1SecretVolumeSource(secret_name="gcp-sa-creds")
+                        )
+                    ]
+                )
+            )
+        )
+    )
+    
+    # 2. Define Service (ClusterIP) - SAME AS BEFORE
+    service = client.V1Service(
+        metadata=client.V1ObjectMeta(name=app_name),
+        spec=client.V1ServiceSpec(
+            selector={"app": app_name},
+            ports=[client.V1ServicePort(port=80, target_port=80)]
+        )
+    )
+    
+    # 3. Apply
+    app_api = client.AppsV1Api()
+    core_api = client.CoreV1Api()
+    
+    # Check if exists to avoid error
+    try:
+        app_api.create_namespaced_deployment(namespace, deployment)
+        core_api.create_namespaced_service(namespace, service)
+        print(f"✅ Deployed {app_name} in {namespace}")
+    except Exception as e:
+        print(f"⚠️ Deployment might already exist: {e}")
+
+    return app_name
+

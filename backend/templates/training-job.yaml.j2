@@ -23,11 +23,19 @@ spec:
           cpu: "500m"
           memory: "512Mi"
     
-    # Save the output model automatically
+
+
     outputs:
       artifacts:
       - name: model
         path: /outputs/model.pkl
-        s3:
-          # We use the credentials we injected on Day 6 (or Global Defaults)
+        # --- NEW BLOCK START ---
+        archive:
+          none: {}
+        # --- NEW BLOCK END ---
+        gcs:
+          bucket: "my-ml-bucket-117" 
           key: "{{ team_name }}/{{ job_id }}/model.pkl"
+          serviceAccountKeySecret:
+            name: gcp-sa-creds
+            key: service-account.json

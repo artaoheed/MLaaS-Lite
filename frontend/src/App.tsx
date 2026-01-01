@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { api } from './api'; 
-import { Play, Code, CheckCircle, AlertCircle, RefreshCw, Terminal } from 'lucide-react';
+// 1. IMPORT deployModel HERE
+import { api, deployModel } from './api'; 
+import { Play, Code, CheckCircle, AlertCircle, RefreshCw, Terminal, Rocket } from 'lucide-react';
 
-// 1. Define Interfaces
 interface Job {
   id: number;
   status: string;
@@ -22,27 +22,22 @@ function App() {
   const [code, setCode] = useState("import os\nprint('Hello from UI')");
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   
-  // 2. Add State for Models
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [models, setModels] = useState<Model[]>([]); // <--- NEW
+  const [models, setModels] = useState<Model[]>([]);
   
   const [selectedLogs, setSelectedLogs] = useState<string>("");
   const [showLogs, setShowLogs] = useState(false);
 
-  // 3. Load Data on Mount
   useEffect(() => {
     loadData();
   }, []);
 
-  // 4. Combined Loader (Fetches Jobs AND Models)
   const loadData = async () => {
     try {
-      // Run both requests at the same time
       const [jobsRes, modelsRes] = await Promise.all([
         api.get('/jobs'),
         api.get('/models')
       ]);
-      
       setJobs(jobsRes.data);
       setModels(modelsRes.data);
     } catch (e) { 
@@ -55,7 +50,7 @@ function App() {
     try {
       await api.post('/jobs', { team_name: team, python_code: code });
       setStatus('success');
-      loadData(); // <--- Refresh EVERYTHING (Jobs + Models)
+      loadData();
     } catch (err) {
       setStatus('error');
     }
@@ -69,6 +64,18 @@ function App() {
       setSelectedLogs(res.data.logs);
     } catch (e) {
       setSelectedLogs("Failed to fetch logs. Pod might be deleted.");
+    }
+  };
+
+  // 2. NEW FUNCTION TO HANDLE DEPLOYMENT
+  const handleDeploy = async (model: Model) => {
+    if(!confirm(`Are you sure you want to deploy ${model.name}?`)) return;
+    
+    try {
+      await deployModel(model.id);
+      alert(`🚀 Deployment Triggered for ${model.name}!\n\nCheck Kubernetes using:\nkubectl get pods -n team-${team}`);
+    } catch (e) {
+      alert("Failed to deploy model. Check backend logs.");
     }
   };
 
@@ -140,9 +147,15 @@ function App() {
                 </div>
                 <p className="text-xs text-gray-500 mt-2 font-mono break-all">{model.s3_path}</p>
                 <div className="mt-4 flex gap-2">
-                  <button className="text-xs bg-purple-600 text-white px-3 py-1 rounded hover:bg-purple-700 w-full">
-                    Deploy (Coming Soon)
+                  
+                  {/* 3. THIS IS THE REAL DEPLOY BUTTON */}
+                  <button 
+                    onClick={() => handleDeploy(model)}
+                    className="text-xs bg-purple-600 text-white px-3 py-2 rounded hover:bg-purple-700 w-full flex items-center justify-center gap-2"
+                  >
+                    <Rocket size={14} /> Deploy API
                   </button>
+
                 </div>
               </div>
             ))}

@@ -1,15 +1,21 @@
-# 1. Secret with MinIO Credentials
+# 1. Secret with GCS Credentials (SANITIZED)
 apiVersion: v1
 kind: Secret
 metadata:
-  name: my-minio-cred
+  name: my-gcs-cred
   namespace: argo
 type: Opaque
 stringData:
-  accessKey: minioadmin
-  secretKey: minioadmin
+  serviceAccountKey: |
+    {
+      "type": "service_account",
+      "project_id": "YOUR_PROJECT_ID_HERE",
+      "private_key": "-----BEGIN PRIVATE KEY-----\nREPLACE_ME_WITH_REAL_KEY\n-----END PRIVATE KEY-----\n",
+      "client_email": "mlaas-storage-sa@..."
+    }
+
 ---
-# 2. ConfigMap linking Argo to MinIO
+# 2. ConfigMap linking Argo to GCS
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -20,14 +26,9 @@ metadata:
 data:
   default-v1: |
     archiveLogs: true
-    s3:
-      # This is the internal DNS name of the MinIO service
-      endpoint: minio.ml-storage.svc.cluster.local:9000
-      bucket: ml-models
-      insecure: true
-      accessKeySecret:
-        name: my-minio-cred
-        key: accessKey
-      secretKeySecret:
-        name: my-minio-cred
-        key: secretKey
+    gcs:
+      bucket: my-ml-bucket-117  # Your real bucket name is fine to keep here (it's not a secret)
+      keyFormat: "{{workflow.name}}/{{pod.name}}"
+      serviceAccountKeySecret:
+        name: my-gcs-cred
+        key: serviceAccountKey

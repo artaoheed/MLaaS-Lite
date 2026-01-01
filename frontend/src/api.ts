@@ -39,3 +39,8 @@ export const fetchModels = async () => {
   const response = await api.get<Model[]>('/models');
   return response.data;
 };
+
+export const deployModel = async (modelId: number) => {
+  const response = await api.post('/deployments', { model_id: modelId });
+  return response.data;
+};

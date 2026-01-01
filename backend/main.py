@@ -130,8 +130,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-
 @app.get("/jobs")
 def list_jobs(db: Session = Depends(database.get_db)):
     # Return latest jobs first
@@ -153,3 +151,30 @@ def get_job_logs(job_id: int, db: Session = Depends(database.get_db)):
 @app.get("/models")
 def list_models(db: Session = Depends(database.get_db)):
     return db.query(models.Model).order_by(models.Model.id.desc()).all()
+
+
+# In backend/main.py
+
+class DeployRequest(BaseModel):
+    model_id: int
+
+@app.post("/deployments")
+def deploy_model(req: DeployRequest, db: Session = Depends(database.get_db)):
+    # 1. Get Model Info
+    model = db.query(models.Model).filter(models.Model.id == req.model_id).first()
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+        
+    team = db.query(models.Team).filter(models.Team.id == model.team_id).first()
+    
+    # 2. Create K8s Resources
+    try:
+        service_name = k8s_service.create_deployment(
+            team_name=team.name,
+            model_id=model.id,
+            s3_key=model.s3_path
+        )
+        return {"status": "deployed", "service_name": service_name, "namespace": team.k8s_namespace}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
