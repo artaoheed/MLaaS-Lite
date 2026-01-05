@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: us-central1-docker.pkg.dev/mlaas-lite/mlaas-repo/backend:v1
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://platform_admin:platform_password@postgres.default.svc.cluster.local:5432/mlaas_db"
+        - name: REDIS_HOST
+          value: "redis.default.svc.cluster.local"
+        - name: GCP_BUCKET_NAME
+          value: "my-ml-bucket-117"
+        volumeMounts:
+        - name: google-creds
+          mountPath: /var/secrets/google
+          readOnly: true
+        env:
+        - name: GCP_SERVICE_ACCOUNT_JSON
+          value: "..." # (Ideally use Workload Identity, but for MVP, use Secret mounting like we did for training)
+      volumes:
+      - name: google-creds
+        secret:
+          secretName: gcp-sa-creds
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: default
+spec:
+  type: LoadBalancer  # <--- This gives you a Real IP
+  selector:
+    app: backend
+  ports:
+  - port: 80
+    targetPort: 8000
